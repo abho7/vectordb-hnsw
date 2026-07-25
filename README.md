@@ -1,6 +1,6 @@
 # Vector DB (HNSW from scratch)
 
-[![tests](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/actions/workflows/tests.yml/badge.svg)](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/actions/workflows/tests.yml)
+[![tests](https://github.com/abho7/vectordb-hnsw/actions/workflows/tests.yml/badge.svg)](https://github.com/abho7/vectordb-hnsw/actions/workflows/tests.yml)
 
 An approximate nearest-neighbor vector index implementing HNSW
 (Hierarchical Navigable Small World graphs, Malkov & Yashunin 2016/2018)
