@@ -1,0 +1,29 @@
+# Python bytecode. Running the test suite in a fresh clone previously left a
+# dozen untracked __pycache__ directories in `git status`, which trains people
+# to ignore that output entirely.
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+env/
+
+# Test and type-checker caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

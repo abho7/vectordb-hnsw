@@ -1,5 +1,7 @@
 # Vector DB (HNSW from scratch)
 
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 [![tests](https://github.com/abho7/vectordb-hnsw/actions/workflows/tests.yml/badge.svg)](https://github.com/abho7/vectordb-hnsw/actions/workflows/tests.yml)
 
 An approximate nearest-neighbor vector index implementing HNSW
