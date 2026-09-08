@@ -130,6 +130,16 @@ scripts/
   never resurface. Keying them by external id instead resurrected the old
   node on reuse, leaving two live nodes under one id
   (`tests/test_vectordb.py::test_reinsert_after_delete_removes_the_old_vector_not_just_hides_it`).
+  Callers that persist an index themselves bring it back through
+  `VectorDB.restore_state()`, which takes external ids plus which of them are
+  deleted and does its own translation. It exists because the internal keying
+  above is exactly the kind of detail a caller should not have to model: when
+  it changed, a downstream project that had been assigning to the private
+  attributes directly kept running and silently stopped filtering deleted
+  entries. `restore_state()` validates that the graph, the id maps and the
+  tombstones describe a coherent index, and raises `RestoreError` without
+  touching the instance if they do not, so the caller can fall back to a
+  rebuild.
 - **SELECT-NEIGHBORS-HEURISTIC without the extendCandidates option**
   from the paper (which would also explore each candidate's own
   neighbors before selecting, for even better graph quality at higher
