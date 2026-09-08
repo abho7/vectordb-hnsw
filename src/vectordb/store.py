@@ -101,6 +101,17 @@ class VectorDB:
             raise KeyError(f"id {external_id!r} not found")
         return self._metadata[external_id]
 
+    @property
+    def index(self) -> HNSWIndex:
+        """The underlying graph, for callers that persist it themselves.
+
+        The counterpart to restore_state(): read the graph out to serialise
+        it, hand it back in to adopt it. Treat it as read-only -- mutating it
+        behind this class's back leaves the id bookkeeping describing a graph
+        that no longer exists.
+        """
+        return self._index
+
     def restore_state(
         self,
         index: HNSWIndex,

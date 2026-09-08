@@ -224,3 +224,12 @@ def test_restore_state_accepts_an_empty_index():
     db.restore_state(HNSWIndex(dim=4, metric="euclidean"), live={})
     assert len(db) == 0
     assert db.search(np.zeros(4), k=1) == []
+
+
+def test_index_property_exposes_the_graph_for_serialisation():
+    db = _populated_db()
+    assert db.index is db._index
+    # The pairing that matters: read the graph out, hand it back in.
+    restored = VectorDB(dim=4, metric="euclidean", seed=1)
+    restored.restore_state(db.index, live={"keep": 0}, deleted={"drop": 1})
+    assert [r["id"] for r in restored.search(np.array([1.0, 0, 0, 0]), k=2)] == ["keep"]
