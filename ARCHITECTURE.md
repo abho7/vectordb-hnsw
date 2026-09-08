@@ -123,7 +123,13 @@ scripts/
 - **Soft-delete only, no compaction.** Deleted entries are filtered from
   results but never removed from the graph structure, so the index only
   grows. A real system needs a background compaction/rebuild pass;
-  documented as future work, not implemented.
+  documented as future work, not implemented. Tombstones are keyed by
+  *internal* node id, not by the caller's external id, which is what makes
+  reusing an id safe: `insert()` after `delete()` allocates a fresh node and
+  leaves the previous one tombstoned for good, so the superseded vector can
+  never resurface. Keying them by external id instead resurrected the old
+  node on reuse, leaving two live nodes under one id
+  (`tests/test_vectordb.py::test_reinsert_after_delete_removes_the_old_vector_not_just_hides_it`).
 - **SELECT-NEIGHBORS-HEURISTIC without the extendCandidates option**
   from the paper (which would also explore each candidate's own
   neighbors before selecting, for even better graph quality at higher

@@ -27,28 +27,37 @@ class VectorDB:
         self._id_map: dict[str, int] = {}  # external string id -> internal int id
         self._reverse_id_map: dict[int, str] = {}
         self._metadata: dict[str, dict] = {}
-        self._deleted: set[str] = set()
+        # Tombstones are keyed by *internal* id, because that is what the
+        # graph holds. Keying them by external id meant that reusing an
+        # external id (delete then insert) lifted the tombstone covering the
+        # previous vector's node, leaving it live in the graph under the same
+        # id as the new one. Internal ids are never reused, so a tombstone
+        # here retires exactly one node, permanently.
+        self._deleted: set[int] = set()
         self._next_internal_id = 0
 
     def __len__(self) -> int:
-        return len(self._id_map) - len(self._deleted)
+        return sum(1 for internal_id in self._id_map.values() if internal_id not in self._deleted)
 
     def insert(self, external_id: str, vector: np.ndarray, metadata: dict | None = None) -> None:
-        if external_id in self._id_map and external_id not in self._deleted:
+        previous_internal_id = self._id_map.get(external_id)
+        if previous_internal_id is not None and previous_internal_id not in self._deleted:
             raise ValueError(f"id {external_id!r} already exists (use delete() first to replace it)")
 
+        # Reinserting over a deleted id: the previous node stays in the graph
+        # (soft delete), so its tombstone has to stay with it. Nothing here
+        # clears it -- the mapping below just stops pointing at it.
         internal_id = self._next_internal_id
         self._next_internal_id += 1
         self._index.insert(internal_id, vector)
         self._id_map[external_id] = internal_id
         self._reverse_id_map[internal_id] = external_id
         self._metadata[external_id] = metadata or {}
-        self._deleted.discard(external_id)
 
     def delete(self, external_id: str) -> None:
         if external_id not in self._id_map:
             raise KeyError(f"id {external_id!r} not found")
-        self._deleted.add(external_id)
+        self._deleted.add(self._id_map[external_id])
 
     def search(self, query: np.ndarray, k: int, ef_search: int | None = None) -> list[dict]:
         """Returns up to k results, each {"id": ..., "distance": ...,
@@ -66,9 +75,9 @@ class VectorDB:
             raw = self._index.search(query, k=fetch_k, ef_search=ef_search)
             results = []
             for internal_id, dist in raw:
-                external_id = self._reverse_id_map[internal_id]
-                if external_id in self._deleted:
+                if internal_id in self._deleted:
                     continue
+                external_id = self._reverse_id_map[internal_id]
                 results.append({"id": external_id, "distance": dist, "metadata": self._metadata[external_id]})
             if len(results) >= k or fetch_k >= len(self._index):
                 break
@@ -77,6 +86,6 @@ class VectorDB:
         return results[:k]
 
     def get_metadata(self, external_id: str) -> dict:
-        if external_id not in self._id_map or external_id in self._deleted:
+        if external_id not in self._id_map or self._id_map[external_id] in self._deleted:
             raise KeyError(f"id {external_id!r} not found")
         return self._metadata[external_id]
