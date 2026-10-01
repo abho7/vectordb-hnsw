@@ -1,0 +1,6 @@
+digits S=0.92
+gaussian std=3.0 S=1.01
+gaussian std=2.0 S=1.52
+gaussian std=1.0 S=3.02
+gaussian std=0.5 S=6.04
+gaussian std=0.3 S=10.11

@@ -16,7 +16,11 @@ directly in Python/NumPy.
 search on clustered synthetic data at every tested scale (500 to 8,000
 vectors), with query latency speedup over brute force growing from
 1.8x to 20.1x as N increases -- the expected signature of O(log n) vs
-O(n) scaling. 28/28 tests passing.
+O(n) scaling. That baseline is a pure-Python distance loop. Measured
+instead against a vectorized NumPy scan, HNSW is about 3.3x faster at
+8,000 vectors and slower at 500, where the graph traversal costs more
+than scanning the whole set (see `results/scaling.jsonl`).
+37/37 tests passing.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the algorithm, the layered
 graph diagram, and two real correctness bugs found and fixed during
@@ -33,7 +37,7 @@ on realistically clustered data (the kind real embeddings actually look
 like), because a node deep in a tight cluster's nearest candidates are
 almost always from that same cluster, so nothing ever forces the
 long-range "bridge" edges the top layers depend on. This project's
-benchmark caught it: recall stuck at 49.5% regardless of how large
+benchmark caught it: recall stuck at 44% regardless of how large
 `ef_search` was set, including `ef_search` equal to the entire dataset
 -- proof the ceiling wasn't a tunable search parameter but an
 unreachable-node problem. The fix is the paper's own proposed solution
@@ -45,7 +49,7 @@ uniform test data would never have caught the bug in the first place.
 
 ```bash
 pip install -r requirements.txt
-pytest tests/ -v                        # 28 tests
+pytest tests/ -v                        # 37 tests
 python benchmarks/run_benchmark.py       # real recall@10 + speed vs. brute force
 python scripts/demo_semantic_search.py    # TF-IDF + HNSW semantic search demo
 ```
@@ -77,6 +81,18 @@ tests/                 # see table above
 scripts/
   demo_semantic_search.py  # semantic search over disaster-response-style text
 ```
+
+## Experiments
+
+`experiments/` holds the scripts behind the measurements quoted above: the
+reachability and recall collapse under the simple neighbor rule, a separation
+sweep across cluster tightness, orphan-node counts, both rules on the UCI
+handwritten digits, and the scaling run that produced the latency figures.
+Raw output is in `results/`. Nothing in `src/` is modified to run them -- the
+simple rule is a subclass that overrides one method.
+
+See [experiments/README.md](./experiments/README.md) for what each script
+measures and how to reproduce it.
 
 ## What's left to do
 

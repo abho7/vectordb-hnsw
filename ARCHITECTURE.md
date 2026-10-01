@@ -34,7 +34,7 @@ cleanly. It was only when benchmarking on realistically clustered data
 images cluster into semantic groups rather than spreading uniformly
 through the vector space -- that the graph fell apart: only 96 of 2,000
 nodes (4.8%) were reachable from the entry point. Recall stayed locked
-at exactly 49.5% no matter how large `ef_search` was set, including
+at exactly 44% no matter how large `ef_search` was set, including
 `ef_search` equal to the entire dataset size, which is what proved it
 wasn't a tunable search-quality problem -- unreachable nodes can't be
 found by any search budget, however large.
@@ -58,7 +58,7 @@ instead of only inward. After switching to this heuristic:
 | Metric | SELECT-NEIGHBORS-SIMPLE | SELECT-NEIGHBORS-HEURISTIC |
 |---|---|---|
 | Nodes reachable from entry point (clustered, n=2000) | 96 / 2000 (4.8%) | 2000 / 2000 (100%) |
-| recall@10 (clustered data) | stuck at 0.495 regardless of ef_search | 1.000 |
+| recall@10 (clustered data) | stuck at 0.44 regardless of ef_search | 1.000 |
 
 This is locked in as a permanent regression test
 (`tests/test_hnsw_correctness.py::test_graph_remains_connected_on_clustered_data`)
@@ -90,6 +90,13 @@ Run with `python benchmarks/run_benchmark.py`:
 | 500 | 5.1 | 1.000 | 0.78 | 1.40 | 1.8x |
 | 2,000 | 23.3 | 1.000 | 0.89 | 5.41 | 6.1x |
 | 8,000 | 105.0 | 1.000 | 1.35 | 27.17 | 20.1x |
+
+The brute-force column is a pure-Python distance loop, so the 1.8x-20.1x
+range is the margin over that baseline. Against a vectorized NumPy scan
+the picture is narrower and not uniformly favourable: HNSW is about 3.3x
+faster at 8,000 vectors, roughly level at 2,000, and slower at 500, where
+traversing the graph costs more than scanning every vector at once.
+`results/scaling.jsonl` carries both baselines per run.
 
 The speedup growing with N (not staying constant) is the expected
 signature of O(log n) vs O(n) scaling -- brute force's cost grows

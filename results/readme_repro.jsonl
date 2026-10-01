@@ -1,0 +1,2 @@
+{"rule": "simple", "reach_l0": 0.048, "reach_all": 0.769, "build_s": 4.369742779000035, "recall_ef10": 0.44, "recall_ef100": 0.44, "recall_ef500": 0.44, "recall_ef2000": 0.44}
+{"rule": "heuristic", "reach_l0": 1.0, "reach_all": 1.0, "build_s": 15.676607937000028, "recall_ef10": 1.0, "recall_ef100": 1.0, "recall_ef500": 1.0, "recall_ef2000": 1.0}

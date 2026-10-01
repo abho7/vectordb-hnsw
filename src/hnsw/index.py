@@ -13,11 +13,12 @@ bottom layer for the actual answer. This is what gives HNSW its
 expected O(log n) search complexity instead of brute force's O(n).
 
 This implementation follows the paper's Algorithm 1 (INSERT) and
-Algorithm 2 (SEARCH-LAYER) directly, using the "simple" neighbor
-selection heuristic (take the M closest candidates) rather than the
-paper's more elaborate diversity-aware heuristic (Algorithm 4) -- see
-ARCHITECTURE.md for what that trades away and why it's a reasonable
-simplification for this scale.
+Algorithm 2 (SEARCH-LAYER) directly, and selects neighbors with the
+paper's diversity-aware SELECT-NEIGHBORS-HEURISTIC (Algorithm 4)
+rather than the "simple" rule of taking the M closest candidates --
+see ARCHITECTURE.md for what the simple rule costs: on clustered data
+it left only 4.8% of nodes reachable from the entry point, and recall
+stuck at 0.44 no matter how large ef_search was set.
 """
 
 from __future__ import annotations

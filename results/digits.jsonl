@@ -1,0 +1,6 @@
+{"seed": 0, "rule": "simple", "reach_l0": 1.0, "reach_all": 1.0, "cross_edges": 0.10101905954368391, "build_s": 5.637243712999975, "recall_ef10": 0.9869999999999999, "recall_ef50": 1.0, "recall_ef100": 1.0}
+{"seed": 0, "rule": "heuristic", "reach_l0": 1.0, "reach_all": 1.0, "cross_edges": 0.13778171953255425, "build_s": 15.26688332599997, "recall_ef10": 0.9969999999999999, "recall_ef50": 1.0, "recall_ef100": 1.0}
+{"seed": 1, "rule": "simple", "reach_l0": 1.0, "reach_all": 1.0, "cross_edges": 0.10101905954368391, "build_s": 5.562044057000094, "recall_ef10": 0.9969999999999999, "recall_ef50": 1.0, "recall_ef100": 1.0}
+{"seed": 1, "rule": "heuristic", "reach_l0": 1.0, "reach_all": 1.0, "cross_edges": 0.13778171953255425, "build_s": 15.419843563999962, "recall_ef10": 0.9969999999999999, "recall_ef50": 1.0, "recall_ef100": 1.0}
+{"seed": 2, "rule": "simple", "reach_l0": 1.0, "reach_all": 1.0, "cross_edges": 0.10101905954368391, "build_s": 5.292955770000049, "recall_ef10": 0.9869999999999999, "recall_ef50": 1.0, "recall_ef100": 1.0}
+{"seed": 2, "rule": "heuristic", "reach_l0": 1.0, "reach_all": 1.0, "cross_edges": 0.13778171953255425, "build_s": 15.031839464999962, "recall_ef10": 0.9969999999999999, "recall_ef50": 1.0, "recall_ef100": 1.0}
