@@ -20,7 +20,7 @@ from collections.abc import Mapping
 
 import numpy as np
 
-from hnsw.index import HNSWIndex
+from hnsw.index import HNSWIndex, SnapshotError
 
 
 class RestoreError(ValueError):
@@ -35,6 +35,11 @@ class RestoreError(ValueError):
 class VectorDB:
     def __init__(self, dim: int, *, metric: str = "cosine", M: int = 16, ef_construction: int = 200, seed: int | None = None):
         self._index = HNSWIndex(dim=dim, metric=metric, M=M, ef_construction=ef_construction, seed=seed)
+        # Kept so restore_snapshot() can build the replacement index with the
+        # same parameters this db was constructed with, including the seed --
+        # otherwise a restored db would pick node levels from a different
+        # stream than a freshly built one and stop being reproducible.
+        self._seed = seed
         self._id_map: dict[str, int] = {}  # external string id -> internal int id
         self._reverse_id_map: dict[int, str] = {}
         self._metadata: dict[str, dict] = {}
@@ -186,3 +191,57 @@ class VectorDB:
         self._metadata = {external_id: dict(metadata.get(external_id, {})) for external_id in live}
         self._deleted = set(deleted.values())
         self._next_internal_id = next_internal_id
+
+    # -- snapshots ---------------------------------------------------------
+
+    def snapshot_arrays(self) -> dict[str, np.ndarray]:
+        """The graph as arrays, for a caller that persists the index itself.
+
+        The companion to restore_snapshot(). The keys and their layout are the
+        engine's business: merge the dict into whatever container you already
+        write (they are namespaced so they will not collide with your own
+        keys), and hand the same pairs back to restore_snapshot() to adopt it.
+
+        This does not include the id bookkeeping or metadata -- those are
+        expressed in the caller's own currency and come back through
+        restore_snapshot()'s arguments.
+        """
+        return self._index.to_arrays()
+
+    def restore_snapshot(
+        self,
+        arrays: Mapping[str, np.ndarray],
+        *,
+        live: Mapping[str, int],
+        deleted: Mapping[str, int] = {},
+        metadata: Mapping[str, dict] | None = None,
+        next_internal_id: int | None = None,
+    ) -> None:
+        """Adopt a graph from snapshot_arrays(), plus the caller's id maps.
+
+        from_arrays() followed by restore_state(), so that a caller persisting
+        an index never has to name HNSWIndex or model how a graph is laid out.
+        The index is rebuilt with this db's own dim, metric, M, ef_construction
+        and seed, so a restored db grows exactly as a freshly built one would.
+
+        Raises SnapshotError if the arrays do not describe a usable graph, or
+        RestoreError if the graph and the id bookkeeping disagree. Both leave
+        this instance untouched, so a caller can fall back to rebuilding from
+        source data. Both are ValueError subclasses, so catching ValueError
+        covers either.
+        """
+        index = HNSWIndex.from_arrays(
+            arrays,
+            dim=self._index.dim,
+            metric=self._index.metric,
+            M=self._index.M,
+            ef_construction=self._index.ef_construction,
+            seed=self._seed,
+        )
+        self.restore_state(
+            index,
+            live=live,
+            deleted=deleted,
+            metadata=metadata,
+            next_internal_id=next_internal_id,
+        )

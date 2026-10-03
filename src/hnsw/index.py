@@ -26,10 +26,25 @@ from __future__ import annotations
 import heapq
 import math
 import random
+from collections.abc import Mapping
 
 import numpy as np
 
 from hnsw.distance import DISTANCE_FUNCTIONS
+
+# Bumped whenever the array layout below changes in a way an older reader
+# would misinterpret. A reader that finds a version it does not know must
+# refuse the snapshot rather than guess at it.
+SNAPSHOT_VERSION = 1
+
+
+class SnapshotError(ValueError):
+    """The arrays handed to HNSWIndex.from_arrays() are not a usable snapshot.
+
+    A ValueError subclass for the same reason as RestoreError: callers already
+    catching ValueError keep working, and a caller that would rather rebuild
+    from source data than fail can catch this specifically.
+    """
 
 
 class HNSWIndex:
@@ -235,3 +250,179 @@ class HNSWIndex:
 
         candidates = self._search_layer(query, [ep], max(ef, k), layer=0)
         return [(nid, dist) for dist, nid in candidates[:k]]
+
+    # -- snapshots ---------------------------------------------------------
+    #
+    # The graph's on-disk shape is the engine's business, not its callers'.
+    # Before this existed, the one consumer that persists an index wrote the
+    # adjacency out itself and assigned straight back into .layers, .vectors,
+    # .entry_point and .max_layer on the way in -- which meant a change to any
+    # of those representations was a silent break out there rather than a
+    # failure here. These two methods are the whole contract: arrays out,
+    # arrays in, with a version stamp so a layout change is refused instead of
+    # misread.
+    #
+    # Keys are namespaced so the dict can be merged into a caller's own
+    # container -- an .npz alongside its own bookkeeping -- without collisions.
+
+    def to_arrays(self) -> dict[str, np.ndarray]:
+        """The graph as a flat dict of arrays, ready for any array container.
+
+        Adjacency goes out in CSR form -- nodes, offsets, flat neighbours --
+        so that a node with no neighbours stays distinguishable from a node
+        that is absent entirely. Insertion relies on that distinction.
+
+        Vectors are stored as float32 while the index computes in float64.
+        For an index built from float32 data -- which is what every embedding
+        model this is pointed at produces -- the round trip is exact. For one
+        built from genuinely float64 vectors it is not: the values come back
+        rounded, and distances shift in the last few digits, which can reorder
+        two neighbours that were already tied. Said plainly rather than left
+        to be discovered, because halving the file is worth it for the data
+        this actually stores, and would not be otherwise.
+        """
+        internal_ids = sorted(self.vectors.keys())
+        vectors = (
+            np.stack([self.vectors[i] for i in internal_ids]).astype(np.float32)
+            if internal_ids
+            else np.zeros((0, self.dim), dtype=np.float32)
+        )
+
+        arrays: dict[str, np.ndarray] = {
+            "hnsw_version": np.array(SNAPSHOT_VERSION, dtype=np.int64),
+            "hnsw_dim": np.array(self.dim, dtype=np.int64),
+            "hnsw_internal_ids": np.array(internal_ids, dtype=np.int64),
+            "hnsw_vectors": vectors,
+            # -1 rather than a missing key, so "no entry point" survives a
+            # container that cannot store None.
+            "hnsw_entry_point": np.array(
+                -1 if self.entry_point is None else self.entry_point, dtype=np.int64
+            ),
+            "hnsw_max_layer": np.array(self.max_layer, dtype=np.int64),
+            "hnsw_num_layers": np.array(len(self.layers), dtype=np.int64),
+        }
+
+        for layer_num, adjacency in enumerate(self.layers):
+            nodes = sorted(adjacency.keys())
+            offsets = [0]
+            flat: list[int] = []
+            for node in nodes:
+                flat.extend(adjacency[node])
+                offsets.append(len(flat))
+            arrays[f"hnsw_L{layer_num}_nodes"] = np.array(nodes, dtype=np.int64)
+            arrays[f"hnsw_L{layer_num}_offsets"] = np.array(offsets, dtype=np.int64)
+            arrays[f"hnsw_L{layer_num}_neighbors"] = np.array(flat, dtype=np.int64)
+
+        return arrays
+
+    @classmethod
+    def from_arrays(
+        cls,
+        arrays: Mapping[str, np.ndarray],
+        *,
+        dim: int,
+        metric: str = "cosine",
+        M: int = 16,
+        ef_construction: int = 200,
+        seed: int | None = None,
+    ) -> "HNSWIndex":
+        """Rebuild a graph previously produced by to_arrays().
+
+        Raises SnapshotError if the arrays are missing, malformed, of an
+        unknown version, or describe a graph that does not hang together, so
+        that a caller can fall back to rebuilding from source data rather than
+        adopt an index that is quietly wrong.
+
+        Build parameters come from the caller rather than from the snapshot:
+        they govern how the graph grows from here, so the caller's current
+        configuration should win over whatever was in force when the snapshot
+        was taken. Only dim is checked, because a mismatch there means the
+        vectors cannot be used at all.
+        """
+
+        def need(key: str) -> np.ndarray:
+            try:
+                return arrays[key]
+            except (KeyError, TypeError) as exc:
+                raise SnapshotError(f"snapshot is missing {key!r}") from exc
+
+        try:
+            version = int(need("hnsw_version"))
+        except (ValueError, TypeError) as exc:
+            raise SnapshotError("hnsw_version is not an integer") from exc
+        if version != SNAPSHOT_VERSION:
+            raise SnapshotError(
+                f"snapshot version {version}, this engine reads {SNAPSHOT_VERSION}"
+            )
+
+        try:
+            stored_dim = int(need("hnsw_dim"))
+            internal_ids = [int(i) for i in np.asarray(need("hnsw_internal_ids")).tolist()]
+            vectors = np.asarray(need("hnsw_vectors"))
+            entry_point = int(need("hnsw_entry_point"))
+            max_layer = int(need("hnsw_max_layer"))
+            num_layers = int(need("hnsw_num_layers"))
+        except (ValueError, TypeError) as exc:
+            raise SnapshotError(f"snapshot is malformed: {exc}") from exc
+
+        if stored_dim != dim:
+            raise SnapshotError(f"snapshot dim {stored_dim} != requested dim {dim}")
+        if vectors.ndim != 2 or vectors.shape[1] != dim:
+            raise SnapshotError(
+                f"snapshot vectors have shape {vectors.shape}, expected (n, {dim})"
+            )
+        if len(internal_ids) != len(vectors):
+            raise SnapshotError(f"{len(internal_ids)} ids against {len(vectors)} vectors")
+        if len(set(internal_ids)) != len(internal_ids):
+            raise SnapshotError("snapshot has duplicate internal ids")
+        if num_layers < 0:
+            raise SnapshotError(f"negative layer count {num_layers}")
+
+        index = cls(dim=dim, metric=metric, M=M, ef_construction=ef_construction, seed=seed)
+        index.vectors = {
+            node_id: np.asarray(vector, dtype=np.float64)
+            for node_id, vector in zip(internal_ids, vectors)
+        }
+
+        known = set(index.vectors)
+        layers: list[dict[int, list[int]]] = []
+        for layer_num in range(num_layers):
+            nodes = [int(n) for n in np.asarray(need(f"hnsw_L{layer_num}_nodes")).tolist()]
+            offsets = [int(o) for o in np.asarray(need(f"hnsw_L{layer_num}_offsets")).tolist()]
+            flat = [int(n) for n in np.asarray(need(f"hnsw_L{layer_num}_neighbors")).tolist()]
+
+            if len(offsets) != len(nodes) + 1:
+                raise SnapshotError(
+                    f"layer {layer_num}: {len(nodes)} nodes against {len(offsets)} "
+                    f"offsets, expected {len(nodes) + 1}"
+                )
+            if offsets[0] != 0 or offsets[-1] != len(flat):
+                raise SnapshotError(f"layer {layer_num}: offsets do not span the neighbours")
+            if any(b < a for a, b in zip(offsets, offsets[1:])):
+                raise SnapshotError(f"layer {layer_num}: offsets are not monotonic")
+
+            adjacency = {
+                node: [int(n) for n in flat[offsets[i] : offsets[i + 1]]]
+                for i, node in enumerate(nodes)
+            }
+            # A neighbour with no vector would be followed during search and
+            # fail there instead of here, a long way from the cause.
+            unknown = {n for neighbours in adjacency.values() for n in neighbours} - known
+            if unknown:
+                raise SnapshotError(
+                    f"layer {layer_num} points at {len(unknown)} node(s) with no vector"
+                )
+            layers.append(adjacency)
+
+        index.layers = layers
+        index.entry_point = None if entry_point < 0 else entry_point
+        index.max_layer = max_layer
+
+        if index.entry_point is not None and index.entry_point not in known:
+            raise SnapshotError(f"entry point {index.entry_point} has no vector")
+        if known and index.entry_point is None:
+            raise SnapshotError("snapshot has vectors but no entry point")
+        if max_layer >= num_layers:
+            raise SnapshotError(f"max_layer {max_layer} against {num_layers} layer(s)")
+
+        return index

@@ -20,7 +20,7 @@ O(n) scaling. That baseline is a pure-Python distance loop. Measured
 instead against a vectorized NumPy scan, HNSW is about 3.3x faster at
 8,000 vectors and slower at 500, where the graph traversal costs more
 than scanning the whole set (see `results/scaling.jsonl`).
-37/37 tests passing.
+54/54 tests passing.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the algorithm, the layered
 graph diagram, and two real correctness bugs found and fixed during
@@ -49,7 +49,7 @@ uniform test data would never have caught the bug in the first place.
 
 ```bash
 pip install -r requirements.txt
-pytest tests/ -v                        # 37 tests
+pytest tests/ -v                        # 54 tests
 python benchmarks/run_benchmark.py       # real recall@10 + speed vs. brute force
 python scripts/demo_semantic_search.py    # TF-IDF + HNSW semantic search demo
 ```
